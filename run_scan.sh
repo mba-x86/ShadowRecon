@@ -1,13 +1,16 @@
 #!/bin/bash
-# ShadowRecon v3.0 - Stealth Security Reconnaissance Framework
+# ShadowRecon v3.0.1 - Stealth Security Reconnaissance Framework
 # All scans routed through Tor network
 # Usage: ./run_scan.sh <target_ip>
+
+set -e
 
 if [ -z "$1" ]; then
     echo "Usage: ./run_scan.sh <target_ip>"
     echo "Example: ./run_scan.sh 192.168.1.1"
     echo ""
     echo "Note: Tor must be running before scanning!"
+    echo "Check Tor status: python3 main.py --check-tor"
     exit 1
 fi
 
@@ -15,7 +18,7 @@ TARGET=$1
 
 echo ""
 echo "==============================================="
-echo " ShadowRecon v3.0"
+echo " ShadowRecon v3.0.1"
 echo " Target: $TARGET"
 echo " Mode: Tor-Routed Stealth Scan"
 echo "==============================================="
@@ -30,6 +33,15 @@ fi
 # Install dependencies if needed
 echo "[*] Checking dependencies..."
 pip3 install -q -r requirements.txt
+
+# Check Tor status first
+echo "[*] Checking Tor connection..."
+if ! python3 main.py --check-tor; then
+    echo "[ERROR] Tor is not available. Please start Tor first."
+    echo "  Linux: sudo systemctl start tor"
+    echo "  Mac:   brew services start tor"
+    exit 1
+fi
 
 echo "[*] Starting scan..."
 echo ""

@@ -1,5 +1,5 @@
 @echo off
-REM ShadowRecon v3.0 - Stealth Security Reconnaissance Framework
+REM ShadowRecon v3.0.1 - Stealth Security Reconnaissance Framework
 REM All scans routed through Tor network
 REM Usage: run_scan.bat <target_ip>
 
@@ -10,6 +10,7 @@ if "%1"=="" (
     echo Example: run_scan.bat 192.168.1.1
     echo.
     echo Note: Tor must be running before scanning!
+    echo Check Tor status: python main.py --check-tor
     exit /b 1
 )
 
@@ -17,7 +18,7 @@ set TARGET=%1
 
 echo.
 echo ===============================================
-echo  ShadowRecon v3.0
+echo  ShadowRecon v3.0.1
 echo  Target: %TARGET%
 echo  Mode: Tor-Routed Stealth Scan
 echo ===============================================
@@ -34,6 +35,14 @@ REM Install dependencies if needed
 echo [*] Checking dependencies...
 pip install -q -r requirements.txt
 
+REM Check Tor status first
+echo [*] Checking Tor connection...
+python main.py --check-tor
+if errorlevel 1 (
+    echo [ERROR] Tor is not available. Please start Tor first.
+    exit /b 1
+)
+
 echo [*] Starting scan...
 echo.
 
@@ -42,7 +51,7 @@ python main.py %TARGET% --verbose
 echo.
 echo ===============================================
 echo  Scan Complete!
-echo  Reports: reports\%TARGET%\<timestamp>\
+echo  Reports: reports\%TARGET%\^<timestamp^>\
 echo ===============================================
 
 endlocal

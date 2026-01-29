@@ -3,7 +3,6 @@ ShadowRecon - Stealth Security Reconnaissance Framework
 Main Entry Point - Orchestrates all security scans
 
 Author: ShadowRecon Team
-Version: 3.0
 Purpose: Advanced server security assessment for SoftEther, WireGuard, and SSH
 
 SECURITY: All scans are routed through Tor network - NO EXPOSED SCANS ALLOWED
@@ -21,6 +20,8 @@ from typing import List, Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from version import __version__
 
 from scanners import (
     PortScanner,
@@ -79,10 +80,10 @@ class PenTestToolkit:
     ║   ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║                             ║
     ║   ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝                             ║
     ║                                                                           ║
-    ║          🔮 Stealth Security Reconnaissance Framework v3.0 🔮             ║
+    ║          🔮 Stealth Security Reconnaissance Framework v{version} 🔮             ║
     ║              🧅 ALL TRAFFIC ROUTED THROUGH TOR NETWORK 🧅                 ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
-    """
+    """.format(version=__version__)
     
     def __init__(self, target: str, options: argparse.Namespace):
         self.target = target
@@ -511,7 +512,7 @@ class PenTestToolkit:
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description='ShadowRecon v3.0 - Stealth Security Reconnaissance Framework (Tor-Mandatory)',
+        description=f'ShadowRecon v{__version__} - Stealth Security Reconnaissance Framework (Tor-Mandatory)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:

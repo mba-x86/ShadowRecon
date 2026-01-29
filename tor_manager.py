@@ -579,9 +579,24 @@ def with_tor(func: Callable) -> Callable:
     return wrapper
 
 
+def _verify_socks5_port(host: str, port: int) -> bool:
+    """Verify a SOCKS5 proxy is actually running on the port"""
+    try:
+        test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_sock.settimeout(3)
+        test_sock.connect((host, port))
+        test_sock.send(b'\x05\x01\x00')
+        response = test_sock.recv(2)
+        test_sock.close()
+        return response[0:1] == b'\x05'
+    except Exception:
+        return False
+
+
 def check_tor_installation() -> Dict:
     """
-    Check Tor installation status and provide guidance
+    Check Tor installation status and provide guidance.
+    Uses SOCKS5 handshake verification for accurate detection.
     
     Returns:
         Dictionary with installation status and instructions
@@ -594,61 +609,79 @@ def check_tor_installation() -> Dict:
         'socks_port': None,
         'control_port': None,
         'tor_browser': False,
+        'tor_executable': None,
         'instructions': []
     }
     
     system = platform.system().lower()
     
-    # Check if Tor is in PATH
-    try:
-        subprocess.run(['tor', '--version'], capture_output=True, timeout=5)
-        result['installed'] = True
-    except Exception:
-        pass
-    
-    # Check if Tor process is running (even if not in PATH)
-    try:
-        if system == 'windows':
-            proc = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq tor.exe'], 
-                                  capture_output=True, text=True, timeout=5)
-            if 'tor.exe' in proc.stdout.lower():
+    # Check for Tor executable
+    if system == 'windows':
+        tor_paths = [
+            os.path.expanduser(r'~\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
+            os.path.expanduser(r'~\OneDrive\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
+            r'C:\Program Files\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
+            r'C:\Program Files (x86)\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
+            r'C:\Tor\tor.exe',
+            r'C:\Program Files\Tor\tor.exe',
+            r'C:\ProgramData\chocolatey\lib\tor\tools\Tor\tor.exe',
+        ]
+        for path in tor_paths:
+            if os.path.exists(path):
                 result['installed'] = True
-        else:
-            proc = subprocess.run(['pgrep', '-x', 'tor'], 
-                                  capture_output=True, timeout=5)
-            if proc.returncode == 0:
+                result['tor_executable'] = path
+                break
+        
+        # Check PATH
+        if not result['installed']:
+            try:
+                proc = subprocess.run(['where', 'tor'], capture_output=True, text=True, timeout=5)
+                if proc.returncode == 0 and proc.stdout.strip():
+                    result['installed'] = True
+                    result['tor_executable'] = proc.stdout.strip().split('\n')[0]
+            except Exception:
+                pass
+    else:
+        tor_paths = ['/usr/bin/tor', '/usr/local/bin/tor', '/opt/homebrew/bin/tor', '/snap/bin/tor']
+        for path in tor_paths:
+            if os.path.exists(path):
                 result['installed'] = True
-    except Exception:
-        pass
+                result['tor_executable'] = path
+                break
+        
+        if not result['installed']:
+            try:
+                proc = subprocess.run(['which', 'tor'], capture_output=True, text=True, timeout=5)
+                if proc.returncode == 0 and proc.stdout.strip():
+                    result['installed'] = True
+                    result['tor_executable'] = proc.stdout.strip()
+            except Exception:
+                pass
     
-    # Check SOCKS ports - Tor Browser (9150) first, then standard (9050)
+    # Check SOCKS ports with actual SOCKS5 handshake verification
     port_configs = [
         (9150, 9151, True),   # Tor Browser
         (9050, 9051, False),  # Standard Tor
     ]
     
     for socks_port, control_port, is_browser in port_configs:
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            if sock.connect_ex(('127.0.0.1', socks_port)) == 0:
-                result['socks_port_open'] = True
-                result['socks_port'] = socks_port
-                result['running'] = True
-                result['tor_browser'] = is_browser
-                sock.close()
-                
-                # Check control port
-                sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock2.settimeout(2)
-                if sock2.connect_ex(('127.0.0.1', control_port)) == 0:
+        if _verify_socks5_port('127.0.0.1', socks_port):
+            result['socks_port_open'] = True
+            result['socks_port'] = socks_port
+            result['running'] = True
+            result['tor_browser'] = is_browser
+            
+            # Check control port (simple connect check is fine here)
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                if sock.connect_ex(('127.0.0.1', control_port)) == 0:
                     result['control_port_open'] = True
                     result['control_port'] = control_port
-                sock2.close()
-                break
-            sock.close()
-        except Exception:
-            pass
+                sock.close()
+            except Exception:
+                pass
+            break
     
     # Provide instructions based on status
     if not result['installed']:
@@ -705,12 +738,14 @@ def print_tor_status():
     print("🧅 TOR STATUS CHECK")
     print("=" * 50)
     print(f"Installed: {'✅' if status['installed'] else '❌'}")
+    if status['tor_executable']:
+        print(f"  Path: {status['tor_executable']}")
     print(f"Running: {'✅' if status['running'] else '❌'}")
     
     if status['running']:
         tor_type = "Tor Browser" if status['tor_browser'] else "Standalone Tor"
         print(f"Type: {tor_type}")
-        print(f"SOCKS Port ({status['socks_port']}): ✅")
+        print(f"SOCKS Port ({status['socks_port']}): ✅ (SOCKS5 verified)")
         print(f"Control Port ({status['control_port']}): {'✅' if status['control_port_open'] else '❌'}")
     else:
         print(f"SOCKS Port: ❌")
@@ -721,7 +756,7 @@ def print_tor_status():
         for instruction in status['instructions']:
             print(f"  {instruction}")
     elif status['running']:
-        print("\n✅ Tor is ready! Use --use-tor to anonymize your scans.")
+        print("\n✅ Tor is ready! ShadowRecon will use it automatically.")
     
     print("=" * 50 + "\n")
     

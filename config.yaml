@@ -85,7 +85,6 @@ brute_force:
 reports:
   output_dir: "./reports"
   formats:
-    - html
     - json
-    - txt
+    - markdown
   include_raw_data: false
