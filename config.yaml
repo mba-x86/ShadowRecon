@@ -1,0 +1,90 @@
+# Configuration file for the Penetration Testing Toolkit
+# Customize scan settings here
+
+# General Settings
+general:
+  timeout: 10
+  verbose: false
+  max_threads: 100
+
+# Port Scanner Settings
+port_scanner:
+  default_range: "common"  # common, vpn, all, or custom range
+  vpn_ports:
+    - 22    # SSH
+    - 443   # HTTPS/SoftEther
+    - 500   # IKE
+    - 992   # SoftEther TLS
+    - 1194  # OpenVPN
+    - 1701  # L2TP
+    - 1723  # PPTP
+    - 4500  # IPSec NAT-T
+    - 5555  # SoftEther
+    - 51820 # WireGuard
+
+# SSH Scanner Settings
+ssh_scanner:
+  default_port: 22
+  check_algorithms: true
+  weak_kex_algorithms:
+    - diffie-hellman-group1-sha1
+    - diffie-hellman-group14-sha1
+    - diffie-hellman-group-exchange-sha1
+  weak_ciphers:
+    - 3des-cbc
+    - aes128-cbc
+    - aes192-cbc
+    - aes256-cbc
+    - blowfish-cbc
+    - arcfour
+
+# SoftEther Scanner Settings
+softether_scanner:
+  ports:
+    - 443
+    - 992
+    - 1194
+    - 5555
+    - 8888
+  check_admin: true
+
+# WireGuard Scanner Settings
+wireguard_scanner:
+  default_port: 51820
+  port_range: "51820-51825"
+
+# SSL Scanner Settings
+ssl_scanner:
+  check_protocols:
+    - TLSv1.2
+    - TLSv1.3
+  check_heartbleed: true
+  check_certificates: true
+
+# Vulnerability Scanner Settings
+vulnerability_scanner:
+  check_heartbleed: true
+  check_exposed_services: true
+  sensitive_ports:
+    - 6379   # Redis
+    - 27017  # MongoDB
+    - 9200   # Elasticsearch
+    - 2375   # Docker
+
+# Brute Force Settings (DISABLED BY DEFAULT)
+brute_force:
+  enabled: false
+  max_attempts: 10
+  delay_between_attempts: 1.0
+  services:
+    - ssh
+    - ftp
+
+# Report Settings
+reports:
+  output_dir: "./reports"
+  formats:
+    - html
+    - json
+    - txt
+  include_raw_data: false
