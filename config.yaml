@@ -1,10 +1,10 @@
-# ShadowRecon - Configuration File
+# ShadowRecon v3.0 - Configuration File
 # Stealth Security Reconnaissance Framework
-# Customize scan settings here
+# All scans are routed through Tor network (mandatory)
 
 # General Settings
 general:
-  timeout: 10
+  timeout: 10          # Base timeout (Tor adds 3x latency automatically)
   verbose: false
   max_threads: 100
 

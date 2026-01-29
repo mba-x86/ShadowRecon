@@ -1,10 +1,14 @@
-# 🔮 ShadowRecon
+# 🔮 ShadowRecon v3.0
 
 ### Stealth Security Reconnaissance Framework
 
 ## 🛡️ Overview
 
-A powerful penetration testing framework designed for comprehensive security assessment of VPN servers running **SoftEther**, **WireGuard**, and **SSH** services. ShadowRecon provides advanced scanning techniques with Tor anonymization and generates professional security reports.
+A powerful penetration testing framework designed for comprehensive security assessment of VPN servers running **SoftEther**, **WireGuard**, and **SSH** services. 
+
+> 🧅 **All scans are routed through Tor network** - No exposed scans allowed. Your IP is always protected.
+
+ShadowRecon provides advanced scanning techniques with **mandatory Tor anonymization** and generates professional security reports in JSON and Markdown formats.
 
 ## ⚠️ Disclaimer
 
@@ -30,14 +34,15 @@ Only use this toolkit on systems you have explicit permission to test. Unauthori
 
 ### Report Formats
 
-- **HTML** - Professional formatted report with risk scores and charts
 - **JSON** - Machine-readable format for automation and integration
-- **TXT** - Plain text format for quick review
+- **Markdown** - Human-readable report with findings and recommendations
 
 ## 📋 Requirements
 
 - Python 3.8+
-- See `requirements.txt` for dependencies
+- **Tor** (MANDATORY - must be running before scanning)
+- Nmap
+- See `requirements.txt` for Python dependencies
 
 ## 🔧 Installation
 
@@ -51,10 +56,15 @@ pip install -r requirements.txt
 
 ## 📖 Usage
 
+> ⚠️ **Tor must be running** before using ShadowRecon. Check with `python main.py --check-tor`
+
 ### Basic Usage
 
 ```bash
-# Scan a target with default settings
+# Check Tor status first
+python main.py --check-tor
+
+# Scan a target (Tor connection is automatic)
 python main.py 192.168.1.1
 
 # Scan with verbose output
@@ -76,40 +86,14 @@ python main.py example.com --ssh-port 2222
 # Scan with WireGuard config analysis
 python main.py 10.0.0.1 --wg-port 51821 --wg-config /etc/wireguard/wg0.conf
 
-# Skip specific scans
+# Skip specific scans for faster results
 python main.py 192.168.1.1 --skip-dns --skip-banner
 
 # Enable brute force testing (AUTHORIZED USE ONLY)
 python main.py 192.168.1.1 --brute-force --brute-max-attempts 5
-```
 
-### 🧅 Anonymous Scanning with Tor
-
-Route all scan traffic through the Tor network to hide your IP address:
-
-```bash
-# Check Tor installation status
-python main.py --check-tor
-
-# Scan through Tor network (requires Tor to be running)
-python main.py 192.168.1.1 --use-tor
-
-# Scan with Tor, but continue if Tor fails
-python main.py example.com --use-tor --tor-optional
-
-# Use custom Tor ports
-python main.py 10.0.0.1 --use-tor --tor-port 9050 --tor-control-port 9051
-```
-
-**Tor Setup Requirements:**
-- Install Tor: https://www.torproject.org/
-- Start Tor service (default SOCKS5 port: 9050)
-- For IP rotation, enable control port in torrc:
-  ```
-  ControlPort 9051
-  CookieAuthentication 1
-  ```
-python main.py 192.168.1.1 --brute-force --brute-max-attempts 5
+# Custom Tor port (if not auto-detected)
+python main.py 192.168.1.1 --tor-port 9150
 ```
 
 ### All Options
@@ -121,6 +105,7 @@ usage: main.py [-h] [-v] [-t TIMEOUT] [-o OUTPUT_DIR] [--port-range PORT_RANGE]
                [--brute-max-attempts BRUTE_MAX_ATTEMPTS] [--skip-port] [--skip-ssh]
                [--skip-softether] [--skip-wireguard] [--skip-ssl]
                [--skip-vulnerability] [--skip-banner] [--skip-dns] [--skip-brute]
+               [--tor-port TOR_PORT] [--check-tor]
                target
 
 Options:
@@ -133,16 +118,22 @@ Options:
   --wg-port             WireGuard port (default: 51820)
   --wg-config           Path to WireGuard config file for analysis
   --domain              Domain name for DNS scanning
+  --tor-port            Custom Tor SOCKS5 port (auto-detected)
+  --check-tor           Check Tor installation status
   --brute-force         Enable brute force testing (AUTHORIZED USE ONLY)
   --skip-*              Skip specific scan types
 ```
 
 ## 📊 Report Output
 
-Reports are saved in the `reports/` directory with the following naming convention:
-- `report_<target>_<timestamp>.html`
-- `report_<target>_<timestamp>.json`
-- `report_<target>_<timestamp>.txt`
+Reports are saved in target-specific directories with the following structure:
+```
+reports/
+└── <target>/
+    └── <timestamp>/
+        ├── report.json    # Machine-readable format
+        └── report.md      # Human-readable markdown
+```
 
 ### Risk Scoring
 

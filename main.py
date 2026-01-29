@@ -3,9 +3,10 @@ ShadowRecon - Stealth Security Reconnaissance Framework
 Main Entry Point - Orchestrates all security scans
 
 Author: ShadowRecon Team
-Version: 2.0
+Version: 3.0
 Purpose: Advanced server security assessment for SoftEther, WireGuard, and SSH
 
+SECURITY: All scans are routed through Tor network - NO EXPOSED SCANS ALLOWED
 DISCLAIMER: This tool is for authorized security testing only.
 Only use on systems you have explicit permission to test.
 """
@@ -14,6 +15,7 @@ import argparse
 import sys
 import os
 import logging
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -77,7 +79,8 @@ class PenTestToolkit:
     ║   ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║                             ║
     ║   ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝                             ║
     ║                                                                           ║
-    ║          🔮 Stealth Security Reconnaissance Framework v2.0 🔮             ║
+    ║          🔮 Stealth Security Reconnaissance Framework v3.0 🔮             ║
+    ║              🧅 ALL TRAFFIC ROUTED THROUGH TOR NETWORK 🧅                 ║
     ║                  SoftEther | WireGuard | SSH | Tor                        ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
     """
@@ -89,6 +92,7 @@ class PenTestToolkit:
         self.start_time = datetime.now()
         self.tor_manager = None
         self.using_tor = False
+        self.target_dir = None  # Directory for this target's reports
         
         # Setup logging
         log_level = logging.DEBUG if options.verbose else logging.INFO
@@ -96,7 +100,7 @@ class PenTestToolkit:
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        self.logger = logging.getLogger('PenTestToolkit')
+        self.logger = logging.getLogger('ShadowRecon')
     
     @property
     def effective_timeout(self) -> int:
@@ -187,7 +191,10 @@ class PenTestToolkit:
             findings = len(result.findings)
             self.print_status(f"SoftEther scan completed: {findings} findings", "success")
             return result
+        except KeyboardInterrupt:
+            raise  # Re-raise to be handled by run()
         except Exception as e:
+            self.logger.debug(f"SoftEther scan exception: {e}")
             self.print_status(f"SoftEther scan failed: {e}", "error")
             return None
     
@@ -206,7 +213,10 @@ class PenTestToolkit:
             findings = len(result.findings)
             self.print_status(f"WireGuard scan completed: {findings} findings", "success")
             return result
+        except KeyboardInterrupt:
+            raise  # Re-raise to be handled by run()
         except Exception as e:
+            self.logger.debug(f"WireGuard scan exception: {e}")
             self.print_status(f"WireGuard scan failed: {e}", "error")
             return None
     
@@ -303,7 +313,7 @@ class PenTestToolkit:
             return None
     
     def run_all_scans(self) -> List[ScanResult]:
-        """Run all enabled scans"""
+        """Run all enabled scans with proper error handling"""
         results = []
         
         scan_methods = [
@@ -325,42 +335,47 @@ class PenTestToolkit:
                 self.print_status(f"Skipping {scan_name} scan", "info")
                 continue
             
-            result = scan_method()
-            if result:
-                results.append(result)
+            try:
+                result = scan_method()
+                if result:
+                    results.append(result)
+            except KeyboardInterrupt:
+                self.print_status(f"Scan interrupted during {scan_name}", "warning")
+                raise
+            except Exception as e:
+                self.logger.exception(f"Unexpected error in {scan_name} scan")
+                self.print_status(f"Error in {scan_name} scan: {e}", "error")
         
         return results
     
     def generate_reports(self) -> None:
-        """Generate all report formats"""
+        """Generate all report formats in target-specific folder"""
         if not self.scan_results:
             self.print_status("No scan results to report", "warning")
             return
         
-        # Create reports directory
-        reports_dir = os.path.join(os.path.dirname(__file__), 'reports')
-        os.makedirs(reports_dir, exist_ok=True)
-        
-        # Generate timestamp for filenames
+        # Create target-specific directory: reports/<target>/<timestamp>/
+        base_reports_dir = os.path.abspath(self.options.output_dir)
+        target_safe = re.sub(r'[^\w\-.]', '_', self.target)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        target_safe = self.target.replace('.', '_').replace(':', '_')
+        self.target_dir = os.path.join(base_reports_dir, target_safe, timestamp)
+        os.makedirs(self.target_dir, exist_ok=True)
         
-        generator = ReportGenerator(self.target, self.scan_results)
-        
-        # HTML Report
-        html_path = os.path.join(reports_dir, f'report_{target_safe}_{timestamp}.html')
-        generator.generate_html_report(html_path)
-        self.print_status(f"HTML report saved: {html_path}", "success")
+        generator = ReportGenerator(
+            self.target, 
+            self.scan_results,
+            tor_ip=self.tor_manager.tor_ip if self.tor_manager else None
+        )
         
         # JSON Report
-        json_path = os.path.join(reports_dir, f'report_{target_safe}_{timestamp}.json')
+        json_path = os.path.join(self.target_dir, 'report.json')
         generator.generate_json_report(json_path)
         self.print_status(f"JSON report saved: {json_path}", "success")
         
-        # Text Report
-        txt_path = os.path.join(reports_dir, f'report_{target_safe}_{timestamp}.txt')
-        generator.generate_text_report(txt_path)
-        self.print_status(f"Text report saved: {txt_path}", "success")
+        # Markdown Report
+        md_path = os.path.join(self.target_dir, 'report.md')
+        generator.generate_markdown_report(md_path)
+        self.print_status(f"Markdown report saved: {md_path}", "success")
         
         # Print summary
         generator.print_summary()
@@ -434,18 +449,32 @@ class PenTestToolkit:
         print("=" * 70)
         print()
         
-        # Setup Tor if requested
-        if self.options.use_tor:
-            if not self.setup_tor():
-                if not self.options.tor_optional:
-                    self.print_status("Exiting: Tor connection required but failed", "error")
-                    return 3
-                else:
-                    self.print_status("Continuing without Tor (--tor-optional specified)", "warning")
+        # Tor is MANDATORY - no exposed scans allowed
+        self.print_status("🧅 Tor connection is MANDATORY - No exposed scans allowed", "info")
+        if not self.setup_tor():
+            self.print_status("FATAL: Cannot proceed without Tor connection!", "critical")
+            self.print_status("Please ensure Tor is running before using ShadowRecon.", "error")
             print()
+            self.print_status("To start Tor:", "info")
+            print("    Windows: Start Tor Browser or Tor Expert Bundle")
+            print("    Linux:   sudo systemctl start tor")
+            print("    Mac:     brew services start tor")
+            return 3
+        
+        print()
         
         # Run scans
-        self.scan_results = self.run_all_scans()
+        try:
+            self.scan_results = self.run_all_scans()
+        except KeyboardInterrupt:
+            self.print_status("Scan interrupted by user", "warning")
+            self.disconnect_tor()
+            return 130
+        except Exception as e:
+            self.print_status(f"Scan error: {e}", "error")
+            self.logger.exception("Scan failed with exception")
+            self.disconnect_tor()
+            return 2
         
         # Calculate duration
         end_time = datetime.now()
@@ -459,8 +488,7 @@ class PenTestToolkit:
         self.generate_reports()
         
         # Disconnect from Tor
-        if self.using_tor:
-            self.disconnect_tor()
+        self.disconnect_tor()
         
         # Return exit code based on findings
         if any(r.status == "failed" for r in self.scan_results):
@@ -480,7 +508,7 @@ class PenTestToolkit:
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description='Server Penetration Testing Toolkit - VPN Security Assessment',
+        description='ShadowRecon v3.0 - Stealth Security Reconnaissance Framework (Tor-Mandatory)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -489,10 +517,14 @@ Examples:
   python main.py 10.0.0.1 --skip-brute --output-dir ./reports
   python main.py 192.168.1.1 --ssh-port 2222 --wg-port 51821
   python main.py example.com --port-range vpn --skip-dns
-  
-  # Anonymous scanning through Tor:
-  python main.py 192.168.1.1 --use-tor
-  python main.py example.com --use-tor --tor-optional
+
+IMPORTANT: All scans are routed through Tor network automatically.
+           Tor must be running before using ShadowRecon.
+           
+To start Tor:
+  Windows: Start Tor Browser or download Tor Expert Bundle
+  Linux:   sudo systemctl start tor
+  Mac:     brew services start tor
 
 Scan Types:
   By default, all scans are enabled except brute force testing.
@@ -500,9 +532,8 @@ Scan Types:
   Use --skip-* options to disable specific scans.
 
 Report Formats:
-  - HTML: Professional formatted report with charts
   - JSON: Machine-readable format for automation
-  - TXT: Plain text format for quick review
+  - Markdown: Human-readable report with findings
         '''
     )
     
@@ -534,19 +565,7 @@ Report Formats:
         help='Output directory for reports (default: ./reports)'
     )
     
-    # Tor anonymization options
-    parser.add_argument(
-        '--use-tor',
-        action='store_true',
-        help='Route all traffic through Tor network for anonymity'
-    )
-    
-    parser.add_argument(
-        '--tor-optional',
-        action='store_true',
-        help='Continue without Tor if connection fails (use with --use-tor)'
-    )
-    
+    # Tor configuration options (Tor is mandatory, but ports can be customized)
     parser.add_argument(
         '--tor-port',
         type=int,
