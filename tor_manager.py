@@ -105,9 +105,44 @@ class TorManager:
             self.socks_port = socks_port or self.DEFAULT_SOCKS_PORT
             self.control_port = control_port or self.DEFAULT_CONTROL_PORT
     
+    def _verify_socks5_handshake(self, port: int) -> bool:
+        """
+        Verify that a real SOCKS5 proxy is running on the port
+        by performing an actual SOCKS5 handshake.
+        
+        This prevents false positives from other services listening on the port.
+        
+        Returns:
+            True if a valid SOCKS5 proxy responded correctly
+        """
+        try:
+            test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            test_sock.settimeout(5)
+            test_sock.connect((self.socks_host, port))
+            
+            # SOCKS5 greeting: version 5, 1 auth method (no auth)
+            test_sock.send(b'\x05\x01\x00')
+            
+            # Expected response: version 5, accepted method 0 (no auth)
+            response = test_sock.recv(2)
+            test_sock.close()
+            
+            # Valid SOCKS5 response
+            if response == b'\x05\x00':
+                return True
+            # SOCKS5 with different auth (still valid SOCKS5)
+            elif len(response) == 2 and response[0:1] == b'\x05':
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"SOCKS5 handshake failed on port {port}: {e}")
+            return False
+    
     def _detect_tor_ports(self) -> Tuple[Optional[int], Optional[int]]:
         """
-        Auto-detect which Tor instance is running
+        Auto-detect which Tor instance is running using SOCKS5 handshake verification.
         
         Returns:
             Tuple of (socks_port, control_port) or (None, None) if not found
@@ -119,16 +154,9 @@ class TorManager:
         ]
         
         for socks_port, control_port in port_configs:
-            try:
-                test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                test_socket.settimeout(2)
-                result = test_socket.connect_ex((self.socks_host, socks_port))
-                test_socket.close()
-                if result == 0:
-                    self.logger.info(f"Detected Tor on port {socks_port}")
-                    return socks_port, control_port
-            except Exception:
-                continue
+            if self._verify_socks5_handshake(socks_port):
+                self.logger.info(f"Detected Tor SOCKS5 proxy on port {socks_port}")
+                return socks_port, control_port
         
         return None, None
     
@@ -155,15 +183,76 @@ class TorManager:
         return None
     
     def _is_tor_running(self) -> bool:
-        """Check if Tor is running and accepting connections"""
-        try:
-            test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            test_socket.settimeout(5)
-            result = test_socket.connect_ex((self.socks_host, self.socks_port))
-            test_socket.close()
-            return result == 0
-        except Exception:
-            return False
+        """
+        Check if Tor is running and accepting SOCKS5 connections.
+        Uses actual SOCKS5 handshake to verify, not just port check.
+        """
+        return self._verify_socks5_handshake(self.socks_port)
+    
+    def _find_tor_executable(self) -> Optional[str]:
+        """Find Tor executable on the system"""
+        system = platform.system().lower()
+        
+        if system == 'windows':
+            # Common Tor installation paths on Windows
+            tor_paths = [
+                # Tor Browser (Desktop)
+                os.path.expanduser(r'~\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
+                # Tor Browser (OneDrive Desktop)
+                os.path.expanduser(r'~\OneDrive\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
+                # Tor Browser (Program Files)
+                r'C:\Program Files\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
+                r'C:\Program Files (x86)\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
+                # Tor Expert Bundle
+                r'C:\Tor\tor.exe',
+                r'C:\Program Files\Tor\tor.exe',
+                r'C:\Program Files (x86)\Tor\tor.exe',
+                os.path.expanduser(r'~\tor\tor.exe'),
+                os.path.expanduser(r'~\Tor\tor.exe'),
+                # Chocolatey install
+                r'C:\ProgramData\chocolatey\lib\tor\tools\Tor\tor.exe',
+            ]
+            
+            for path in tor_paths:
+                if os.path.exists(path):
+                    self.logger.debug(f"Found Tor at: {path}")
+                    return path
+            
+            # Check if 'tor' is in PATH
+            try:
+                result = subprocess.run(['where', 'tor'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout.strip():
+                    path = result.stdout.strip().split('\n')[0]
+                    self.logger.debug(f"Found Tor in PATH: {path}")
+                    return path
+            except Exception:
+                pass
+                
+        else:
+            # Linux/Mac
+            tor_paths = [
+                '/usr/bin/tor',
+                '/usr/local/bin/tor',
+                '/opt/homebrew/bin/tor',  # Mac M1/M2
+                '/snap/bin/tor',
+            ]
+            
+            for path in tor_paths:
+                if os.path.exists(path):
+                    self.logger.debug(f"Found Tor at: {path}")
+                    return path
+            
+            # Check if 'tor' is in PATH
+            try:
+                result = subprocess.run(['which', 'tor'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout.strip():
+                    path = result.stdout.strip()
+                    self.logger.debug(f"Found Tor in PATH: {path}")
+                    return path
+            except Exception:
+                pass
+        
+        return None
     
     def _start_tor(self) -> bool:
         """Attempt to start Tor service"""
@@ -171,54 +260,59 @@ class TorManager:
         
         try:
             if system == 'windows':
-                # Try common Tor Browser paths on Windows
-                tor_paths = [
-                    r'C:\Program Files\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
-                    r'C:\Program Files (x86)\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
-                    os.path.expanduser(r'~\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
-                    os.path.expanduser(r'~\OneDrive\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
-                    # Tor Expert Bundle paths
-                    r'C:\Tor\tor.exe',
-                    r'C:\Program Files\Tor\tor.exe',
-                    os.path.expanduser(r'~\tor\tor.exe'),
-                    'tor',  # If in PATH (without .exe for compatibility)
-                    'tor.exe',  # If in PATH
-                ]
+                tor_path = self._find_tor_executable()
                 
-                for tor_path in tor_paths:
-                    try:
-                        # Check if path exists (skip for PATH-based commands)
-                        if os.path.sep in tor_path and not os.path.exists(tor_path):
-                            continue
-                        
-                        self.logger.info(f"Trying to start Tor from: {tor_path}")
-                        self.tor_process = subprocess.Popen(
-                            [tor_path],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-                        )
-                        # Wait for Tor to start (it needs time to bootstrap)
-                        for _ in range(10):  # Try for up to 10 seconds
-                            time.sleep(1)
-                            if self._is_tor_running():
-                                self.logger.info(f"Tor started successfully from {tor_path}")
-                                return True
-                    except FileNotFoundError:
-                        continue
-                    except Exception as e:
-                        self.logger.debug(f"Failed to start Tor from {tor_path}: {e}")
-                        continue
+                if tor_path:
+                    self.logger.info(f"Starting Tor from: {tor_path}")
+                    
+                    # Start Tor as a background process
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    
+                    self.tor_process = subprocess.Popen(
+                        [tor_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        startupinfo=startupinfo,
+                        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                    )
+                    
+                    # Wait for Tor to bootstrap (up to 60 seconds)
+                    print("    Waiting for Tor to bootstrap...", end='', flush=True)
+                    for i in range(60):
+                        time.sleep(1)
+                        if self._is_tor_running():
+                            print(" Done!")
+                            self.logger.info("Tor started successfully")
+                            # Update ports to standalone Tor
+                            self.socks_port = self.DEFAULT_SOCKS_PORT
+                            self.control_port = self.DEFAULT_CONTROL_PORT
+                            return True
+                        if i % 10 == 9:
+                            print(".", end='', flush=True)
+                    
+                    print(" Timeout!")
+                    self.logger.error("Tor failed to start within 60 seconds")
+                    return False
+                else:
+                    self.logger.error("Tor executable not found")
+                    return False
+                    
             else:
-                # Linux/Mac - try systemctl or direct command
+                # Linux/Mac - try systemctl first
                 try:
                     result = subprocess.run(['systemctl', 'start', 'tor'], 
                                    capture_output=True, timeout=10)
                     if result.returncode == 0:
-                        time.sleep(3)
-                        if self._is_tor_running():
-                            self.logger.info("Tor started via systemctl")
-                            return True
+                        print("    Waiting for Tor to start...", end='', flush=True)
+                        for i in range(30):
+                            time.sleep(1)
+                            if self._is_tor_running():
+                                print(" Done!")
+                                self.logger.info("Tor started via systemctl")
+                                return True
+                        print(" Timeout!")
                 except Exception:
                     pass
                 
@@ -227,27 +321,35 @@ class TorManager:
                     try:
                         subprocess.run(['brew', 'services', 'start', 'tor'], 
                                        capture_output=True, timeout=10)
-                        time.sleep(3)
-                        if self._is_tor_running():
-                            self.logger.info("Tor started via brew services")
-                            return True
+                        print("    Waiting for Tor to start...", end='', flush=True)
+                        for i in range(30):
+                            time.sleep(1)
+                            if self._is_tor_running():
+                                print(" Done!")
+                                self.logger.info("Tor started via brew services")
+                                return True
+                        print(" Timeout!")
                     except Exception:
                         pass
                 
                 # Try direct tor command
-                try:
+                tor_path = self._find_tor_executable()
+                if tor_path:
                     self.tor_process = subprocess.Popen(
-                        ['tor'],
+                        [tor_path],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
-                    for _ in range(10):
+                    print("    Waiting for Tor to bootstrap...", end='', flush=True)
+                    for i in range(60):
                         time.sleep(1)
                         if self._is_tor_running():
+                            print(" Done!")
                             self.logger.info("Tor started directly")
                             return True
-                except Exception:
-                    pass
+                        if i % 10 == 9:
+                            print(".", end='', flush=True)
+                    print(" Timeout!")
             
             return False
             
@@ -266,9 +368,9 @@ class TorManager:
         self.original_ip = self._get_current_ip()
         self.logger.info(f"Original IP: {self.original_ip}")
         
-        # Check if Tor is running
+        # Check if Tor is running (with SOCKS5 handshake verification)
         if not self._is_tor_running():
-            self.logger.warning("Tor is not running")
+            self.logger.warning("Tor is not running (no valid SOCKS5 proxy detected)")
             
             if self.auto_start:
                 self.logger.info("Attempting to start Tor...")
@@ -367,6 +469,27 @@ class TorManager:
             'socks_host': self.socks_host,
             'socks_port': self.socks_port,
         }
+    
+    def print_tor_status(self) -> None:
+        """Print detailed Tor status for debugging"""
+        print("\n=== Tor Status ===")
+        
+        # Check both port configurations
+        for name, socks_port in [("Tor Browser", 9150), ("Standalone Tor", 9050)]:
+            is_socks5 = self._verify_socks5_handshake(socks_port)
+            status = "✓ SOCKS5 verified" if is_socks5 else "✗ Not running"
+            print(f"  {name} (port {socks_port}): {status}")
+        
+        # Check for Tor executable
+        tor_path = self._find_tor_executable()
+        if tor_path:
+            print(f"  Tor executable: {tor_path}")
+        else:
+            print("  Tor executable: Not found")
+        
+        print(f"  Current config: {self.socks_host}:{self.socks_port}")
+        print(f"  Connected: {self.connected}")
+        print("==================\n")
     
     def create_proxied_session(self) -> 'requests.Session':
         """Create a requests Session configured to use Tor"""
@@ -606,5 +729,39 @@ def print_tor_status():
 
 
 if __name__ == '__main__':
-    # Run status check when executed directly
-    print_tor_status()
+    import sys
+    
+    print("=" * 50)
+    print("Tor Manager - Connection Test")
+    print("=" * 50)
+    
+    # Create manager and print status
+    tor = TorManager(auto_start=True)
+    tor.print_tor_status()
+    
+    print("\nAttempting to connect to Tor...")
+    
+    if tor.connect():
+        print(f"\n✓ Successfully connected to Tor!")
+        print(f"  Original IP: {tor.original_ip}")
+        print(f"  Tor IP:      {tor.tor_ip}")
+        print(f"  SOCKS Port:  {tor.socks_port}")
+        
+        # Test IP rotation
+        if STEM_AVAILABLE:
+            print("\nAttempting IP rotation...")
+            if tor.rotate_ip():
+                print(f"  New IP: {tor.tor_ip}")
+            else:
+                print("  IP rotation failed (control port may require auth)")
+        
+        tor.disconnect()
+        print("\n✓ Disconnected from Tor")
+        sys.exit(0)
+    else:
+        print("\n✗ Failed to connect to Tor")
+        print("\nTo use ShadowRecon, please ensure Tor is running:")
+        print("  - Start Tor Browser, OR")
+        print("  - Start Tor service: 'sudo systemctl start tor' (Linux)")
+        print("  - Install Tor Expert Bundle and run tor.exe (Windows)")
+        sys.exit(1)
