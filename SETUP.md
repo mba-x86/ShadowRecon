@@ -51,8 +51,7 @@ pip install -r requirements.txt
 
 **Windows:**
 - Download from https://nmap.org/download.html
-- Run the installer
-- Ensure "Add to PATH" is selected
+- Run the installer- Ensure "Add to PATH" is selected
 
 **Linux:**
 ```bash
