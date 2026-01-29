@@ -1,5 +1,5 @@
 @echo off
-REM Server Penetration Testing Toolkit - Quick Start Script
+REM ShadowRecon - Stealth Security Reconnaissance Framework
 REM Usage: run_scan.bat <target_ip>
 
 setlocal
@@ -14,7 +14,7 @@ set TARGET=%1
 
 echo.
 echo ===============================================
-echo  Server Penetration Testing Toolkit
+echo  ShadowRecon v2.0
 echo  Target: %TARGET%
 echo ===============================================
 echo.

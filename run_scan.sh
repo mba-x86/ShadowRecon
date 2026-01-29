@@ -1,5 +1,5 @@
 #!/bin/bash
-# Server Penetration Testing Toolkit - Quick Start Script
+# ShadowRecon - Stealth Security Reconnaissance Framework
 # Usage: ./run_scan.sh <target_ip>
 
 if [ -z "$1" ]; then
@@ -12,7 +12,7 @@ TARGET=$1
 
 echo ""
 echo "==============================================="
-echo " Server Penetration Testing Toolkit"
+echo " ShadowRecon v2.0"
 echo " Target: $TARGET"
 echo "==============================================="
 echo ""

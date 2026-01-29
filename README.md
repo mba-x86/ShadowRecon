@@ -1,8 +1,10 @@
-# Server Penetration Testing Toolkit
+# 🔮 ShadowRecon
+
+### Stealth Security Reconnaissance Framework
 
 ## 🛡️ Overview
 
-A comprehensive penetration testing toolkit designed for security assessment of VPN servers running **SoftEther**, **WireGuard**, and **SSH** services. This toolkit provides multiple scanning techniques and generates professional security reports.
+A powerful penetration testing framework designed for comprehensive security assessment of VPN servers running **SoftEther**, **WireGuard**, and **SSH** services. ShadowRecon provides advanced scanning techniques with Tor anonymization and generates professional security reports.
 
 ## ⚠️ Disclaimer
 

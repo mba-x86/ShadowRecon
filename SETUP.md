@@ -1,6 +1,6 @@
-# Pentest Toolkit - Setup Guide
+# 🔮 ShadowRecon - Setup Guide
 
-A step-by-step guide to get the tool running.
+A step-by-step guide to get ShadowRecon running.
 
 ---
 
@@ -15,8 +15,8 @@ A step-by-step guide to get the tool running.
 ## Step 1: Clone or Download
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pentest_toolkit.git
-cd pentest_toolkit
+git clone https://github.com/YOUR_USERNAME/shadowrecon.git
+cd shadowrecon
 ```
 
 Or download and extract the ZIP file.
