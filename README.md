@@ -1,4 +1,4 @@
-# 🔮 ShadowRecon v3.0
+# 🔮 ShadowRecon v3.0.1
 
 ### Stealth Security Reconnaissance Framework
 
