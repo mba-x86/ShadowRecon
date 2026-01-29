@@ -42,3 +42,6 @@ python-whois>=0.8.0
 PySocks>=1.7.1
 stem>=1.8.2
 requests[socks]>=2.31.0
+
+# Testing
+pytest>=7.0.0
