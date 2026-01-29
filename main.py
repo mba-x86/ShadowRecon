@@ -81,7 +81,6 @@ class PenTestToolkit:
     ║                                                                           ║
     ║          🔮 Stealth Security Reconnaissance Framework v3.0 🔮             ║
     ║              🧅 ALL TRAFFIC ROUTED THROUGH TOR NETWORK 🧅                 ║
-    ║                  SoftEther | WireGuard | SSH | Tor                        ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
     """
     
@@ -381,29 +380,33 @@ class PenTestToolkit:
         generator.print_summary()
     
     def setup_tor(self) -> bool:
-        """Setup Tor connection for anonymous scanning"""
+        """Setup Tor connection for anonymous scanning - auto-starts if needed"""
         if not TOR_AVAILABLE:
             self.print_status("Tor manager not available - install PySocks and stem", "error")
             return False
         
         self.print_status("🧅 Setting up Tor network connection...", "info")
         
-        # Check Tor installation
-        tor_status = check_tor_installation()
-        
-        if not tor_status['running']:
-            self.print_status("Tor is not running!", "error")
-            for instruction in tor_status['instructions']:
-                print(f"    {instruction}")
-            return False
-        
-        # Initialize Tor manager with auto-detection
+        # Initialize Tor manager with auto-start enabled
         self.tor_manager = TorManager(
             socks_port=self.options.tor_port,
             control_port=self.options.tor_control_port,
-            auto_start=False,
+            auto_start=True,  # Auto-start Tor if not running
             auto_detect=(self.options.tor_port is None)
         )
+        
+        # Check if Tor is running, if not try to start it
+        if not self.tor_manager._is_tor_running():
+            self.print_status("🧅 Tor is not running, attempting to start...", "info")
+            if self.tor_manager._start_tor():
+                self.print_status("🧅 Tor started successfully!", "success")
+            else:
+                self.print_status("Failed to start Tor automatically", "error")
+                self.print_status("Please start Tor manually:", "info")
+                print("    Windows: Start Tor Browser or run tor.exe")
+                print("    Linux:   sudo systemctl start tor")
+                print("    Mac:     brew services start tor")
+                return False
         
         # Connect to Tor
         if self.tor_manager.connect():

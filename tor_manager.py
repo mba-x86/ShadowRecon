@@ -176,46 +176,76 @@ class TorManager:
                     r'C:\Program Files\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
                     r'C:\Program Files (x86)\Tor Browser\Browser\TorBrowser\Tor\tor.exe',
                     os.path.expanduser(r'~\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
+                    os.path.expanduser(r'~\OneDrive\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe'),
+                    # Tor Expert Bundle paths
+                    r'C:\Tor\tor.exe',
+                    r'C:\Program Files\Tor\tor.exe',
+                    os.path.expanduser(r'~\tor\tor.exe'),
+                    'tor',  # If in PATH (without .exe for compatibility)
                     'tor.exe',  # If in PATH
                 ]
                 
                 for tor_path in tor_paths:
-                    if os.path.exists(tor_path) or tor_path == 'tor.exe':
-                        try:
-                            self.tor_process = subprocess.Popen(
-                                [tor_path],
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                creationflags=subprocess.CREATE_NO_WINDOW
-                            )
-                            # Wait for Tor to start
-                            time.sleep(5)
-                            if self._is_tor_running():
-                                self.logger.info("Tor started successfully")
-                                return True
-                        except Exception as e:
-                            self.logger.debug(f"Failed to start Tor from {tor_path}: {e}")
+                    try:
+                        # Check if path exists (skip for PATH-based commands)
+                        if os.path.sep in tor_path and not os.path.exists(tor_path):
                             continue
+                        
+                        self.logger.info(f"Trying to start Tor from: {tor_path}")
+                        self.tor_process = subprocess.Popen(
+                            [tor_path],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                        )
+                        # Wait for Tor to start (it needs time to bootstrap)
+                        for _ in range(10):  # Try for up to 10 seconds
+                            time.sleep(1)
+                            if self._is_tor_running():
+                                self.logger.info(f"Tor started successfully from {tor_path}")
+                                return True
+                    except FileNotFoundError:
+                        continue
+                    except Exception as e:
+                        self.logger.debug(f"Failed to start Tor from {tor_path}: {e}")
+                        continue
             else:
                 # Linux/Mac - try systemctl or direct command
                 try:
-                    subprocess.run(['systemctl', 'start', 'tor'], 
+                    result = subprocess.run(['systemctl', 'start', 'tor'], 
                                    capture_output=True, timeout=10)
-                    time.sleep(3)
-                    if self._is_tor_running():
-                        return True
+                    if result.returncode == 0:
+                        time.sleep(3)
+                        if self._is_tor_running():
+                            self.logger.info("Tor started via systemctl")
+                            return True
                 except Exception:
                     pass
                 
+                # Try brew services on Mac
+                if system == 'darwin':
+                    try:
+                        subprocess.run(['brew', 'services', 'start', 'tor'], 
+                                       capture_output=True, timeout=10)
+                        time.sleep(3)
+                        if self._is_tor_running():
+                            self.logger.info("Tor started via brew services")
+                            return True
+                    except Exception:
+                        pass
+                
+                # Try direct tor command
                 try:
                     self.tor_process = subprocess.Popen(
                         ['tor'],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
-                    time.sleep(5)
-                    if self._is_tor_running():
-                        return True
+                    for _ in range(10):
+                        time.sleep(1)
+                        if self._is_tor_running():
+                            self.logger.info("Tor started directly")
+                            return True
                 except Exception:
                     pass
             
